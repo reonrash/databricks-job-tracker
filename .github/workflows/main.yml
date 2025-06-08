@@ -1,0 +1,31 @@
+name: Weekly Databricks Job Tracker
+on:
+  schedule:
+    # Every Sunday at 2 AM PST (10 AM UTC)
+    - cron: '0 10 * * 0'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  run-container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build and run container
+        env:
+          # Database connection environment variables
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          docker build -t databricks-job-tracker .
+          docker run --rm \
+            -e DB_HOST="$DB_HOST" \
+            -e DB_PORT="$DB_PORT" \
+            -e DB_NAME="$DB_NAME" \
+            -e DB_USER="$DB_USER" \
+            -e DB_PASSWORD="$DB_PASSWORD" \
+            databricks-job-tracker
