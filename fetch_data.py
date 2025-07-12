@@ -7,12 +7,14 @@ from psycopg2.extras import execute_values
 
 
 def fetch_databricks_job_data(url):
+    """Fetch job data JSON from the given Databricks careers URL."""
     response = requests.get(url)
     response.raise_for_status()
     return response.json()
 
 
 def extract_unique_jobs(jobs):
+    """Filter unique jobs by internal ID and format job fields."""
     seen_ids = set()
     filtered = []
     timestamp = datetime.utcnow().isoformat()
@@ -42,6 +44,7 @@ def extract_unique_jobs(jobs):
 
 
 def connect_db():
+    """Establish a connection to the PostgreSQL database using environment variables."""
     conn = psycopg2.connect(
         host=os.getenv("DB_HOST"),
         port=os.getenv("DB_PORT"),
@@ -54,6 +57,7 @@ def connect_db():
 
 
 def create_table(conn):
+    """Create the jobs table in the database if it does not already exist."""
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -71,8 +75,8 @@ def create_table(conn):
 
 
 def upsert_jobs(conn, jobs):
+    """Insert new jobs or update existing jobs in the database using upsert logic."""
     with conn.cursor() as cur:
-        # Prepare data for batch insert
         records = [
             (
                 job["id"],
@@ -85,7 +89,6 @@ def upsert_jobs(conn, jobs):
             for job in jobs
         ]
 
-        # Upsert query: Insert or update on conflict of primary key
         sql = """
             INSERT INTO jobs (id, title, locations, department, updated_at, collected_at)
             VALUES %s
@@ -102,6 +105,7 @@ def upsert_jobs(conn, jobs):
 
 
 def view_rows(conn, limit=10):
+    """Retrieve and print the latest job rows from the database."""
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -119,6 +123,7 @@ def view_rows(conn, limit=10):
 
 
 def main():
+    """Main execution flow: fetch, process, and upload Databricks job data."""
     url = "https://www.databricks.com/careers-assets/page-data/company/careers/open-positions/page-data.json"
 
     data = fetch_databricks_job_data(url)
