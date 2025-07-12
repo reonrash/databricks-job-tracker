@@ -14,7 +14,12 @@ def fetch_databricks_job_data(url):
 
 
 def extract_unique_jobs(jobs):
-    """Filter unique jobs by internal ID and format job fields."""
+    """
+    Filter unique jobs by internal ID and format job fields.
+
+    Note: 'unique' here means within the current fetch only to avoid duplicates
+    in this batch, but duplicates can still exist in the database.
+    """
     seen_ids = set()
     filtered = []
     timestamp = datetime.utcnow().isoformat()
@@ -31,7 +36,7 @@ def extract_unique_jobs(jobs):
 
         filtered.append(
             {
-                "id": internal_id,
+                "job_id": internal_id,
                 "title": job.get("title"),
                 "locations": locations,
                 "department": department,
@@ -62,7 +67,8 @@ def create_table(conn):
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS jobs (
-                id BIGINT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
+                job_id BIGINT NOT NULL,
                 title TEXT NOT NULL,
                 locations TEXT,
                 department TEXT,
@@ -74,12 +80,12 @@ def create_table(conn):
         conn.commit()
 
 
-def upsert_jobs(conn, jobs):
-    """Insert new jobs or update existing jobs in the database using upsert logic."""
+def insert_jobs(conn, jobs):
+    """Insert jobs into the database allowing duplicates."""
     with conn.cursor() as cur:
         records = [
             (
-                job["id"],
+                job["job_id"],
                 job["title"],
                 job["locations"],
                 job["department"],
@@ -90,14 +96,8 @@ def upsert_jobs(conn, jobs):
         ]
 
         sql = """
-            INSERT INTO jobs (id, title, locations, department, updated_at, collected_at)
+            INSERT INTO jobs (job_id, title, locations, department, updated_at, collected_at)
             VALUES %s
-            ON CONFLICT (id) DO UPDATE SET
-                title = EXCLUDED.title,
-                locations = EXCLUDED.locations,
-                department = EXCLUDED.department,
-                updated_at = EXCLUDED.updated_at,
-                collected_at = EXCLUDED.collected_at
         """
 
         execute_values(cur, sql, records)
@@ -109,8 +109,8 @@ def view_rows(conn, limit=10):
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, title, locations, department, updated_at, collected_at
-            FROM databricks_jobs
+            SELECT id, job_id, title, locations, department, updated_at, collected_at
+            FROM jobs
             ORDER BY collected_at DESC
             LIMIT %s
             """,
@@ -132,11 +132,11 @@ def main():
 
     conn = connect_db()
     create_table(conn)
-    upsert_jobs(conn, filtered_jobs)
+    insert_jobs(conn, filtered_jobs)
     # view_rows(conn)
     conn.close()
 
-    print(f"✅ Uploaded {len(filtered_jobs)} jobs to the database.")
+    print(f"✅ Inserted {len(filtered_jobs)} jobs into the database.")
 
 
 if __name__ == "__main__":
