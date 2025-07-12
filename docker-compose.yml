@@ -10,7 +10,7 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
     volumes:
-      - ./:/app  # for dev live code sync; remove for production
+      - ./:/app  
     command: ["python", "fetch_data.py"]
 
   db:
