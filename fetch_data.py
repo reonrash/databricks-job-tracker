@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import psycopg2
 from psycopg2.extras import execute_values
+from location_coordinates import location_coords
 
 
 def fetch_databricks_job_data(url):
@@ -14,12 +15,7 @@ def fetch_databricks_job_data(url):
 
 
 def extract_unique_jobs(jobs):
-    """
-    Filter unique jobs by internal ID and format job fields.
-
-    Note: 'unique' here means within the current fetch only to avoid duplicates
-    in this batch, but duplicates can still exist in the database.
-    """
+    """Filter unique jobs by internal ID and format job fields."""
     seen_ids = set()
     filtered = []
     timestamp = datetime.utcnow().isoformat()
@@ -34,6 +30,10 @@ def extract_unique_jobs(jobs):
         departments = job.get("departments", [])
         department = departments[0]["name"] if departments else None
 
+        lat, lon = (None, None)
+        if ";" not in locations and locations in location_coords:
+            lat, lon = location_coords[locations]
+
         filtered.append(
             {
                 "job_id": internal_id,
@@ -42,6 +42,8 @@ def extract_unique_jobs(jobs):
                 "department": department,
                 "updated_at": job.get("updated_at"),
                 "collected_at": timestamp,
+                "latitude": lat,
+                "longitude": lon,
             }
         )
 
@@ -50,7 +52,7 @@ def extract_unique_jobs(jobs):
 
 def connect_db():
     """Establish a connection to the PostgreSQL database using environment variables."""
-    conn = psycopg2.connect(
+    return psycopg2.connect(
         host=os.getenv("DB_HOST"),
         port=os.getenv("DB_PORT"),
         dbname=os.getenv("DB_NAME"),
@@ -58,7 +60,6 @@ def connect_db():
         password=os.getenv("DB_PASSWORD"),
         sslmode="require",
     )
-    return conn
 
 
 def create_table(conn):
@@ -73,7 +74,9 @@ def create_table(conn):
                 locations TEXT,
                 department TEXT,
                 updated_at TIMESTAMPTZ NOT NULL,
-                collected_at TIMESTAMPTZ NOT NULL
+                collected_at TIMESTAMPTZ NOT NULL,
+                latitude DOUBLE PRECISION,
+                longitude DOUBLE PRECISION
             );
             """
         )
@@ -91,35 +94,19 @@ def insert_jobs(conn, jobs):
                 job["department"],
                 job["updated_at"],
                 job["collected_at"],
+                job["latitude"],
+                job["longitude"],
             )
             for job in jobs
         ]
 
         sql = """
-            INSERT INTO jobs (job_id, title, locations, department, updated_at, collected_at)
+            INSERT INTO jobs (job_id, title, locations, department, updated_at, collected_at, latitude, longitude)
             VALUES %s
         """
 
         execute_values(cur, sql, records)
         conn.commit()
-
-
-def view_rows(conn, limit=10):
-    """Retrieve and print the latest job rows from the database."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT id, job_id, title, locations, department, updated_at, collected_at
-            FROM jobs
-            ORDER BY collected_at DESC
-            LIMIT %s
-            """,
-            (limit,),
-        )
-        rows = cur.fetchall()
-        print(f"\n📦 First {limit} rows from database:")
-        for row in rows:
-            print(row)
 
 
 def main():
@@ -133,10 +120,7 @@ def main():
     conn = connect_db()
     create_table(conn)
     insert_jobs(conn, filtered_jobs)
-    # view_rows(conn)
     conn.close()
-
-    print(f"✅ Inserted {len(filtered_jobs)} jobs into the database.")
 
 
 if __name__ == "__main__":
