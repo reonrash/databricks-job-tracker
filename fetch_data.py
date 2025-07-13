@@ -121,6 +121,7 @@ def main():
     create_table(conn)
     insert_jobs(conn, filtered_jobs)
     conn.close()
+    print("Succesfully uploaded jobs to db!")
 
 
 if __name__ == "__main__":
